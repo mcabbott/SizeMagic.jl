@@ -1,5 +1,5 @@
 using Test, SizeMagic
-using SizeMagic: NamedInt, NDA
+using SizeMagic: NamedInt
 
 macro hasnames(args...)
     names, ex = map(quotenode, Base.front(args)), last(args)
@@ -7,6 +7,7 @@ macro hasnames(args...)
     out = quote
         $res = $(esc(ex))
         $tup = $SizeMagic._names($res)
+        @test $length($tup) == $length($(Base.front(args)))
     end
     for (i,n) in enumerate(names)
         push!(out.args, :(@test $tup[$i] == $n))
@@ -18,8 +19,8 @@ quotenode(q::QuoteNode) = q
 
 @testset "NamedInt" begin
     a = NamedInt(2, :a)
-    @test a+1 isa NamedInt{:a}
-    @test a+a isa NamedInt{:a}
+    @test _name(a+1) == :a
+    @test _name(a+a) == :a
     @test a*a === 4
     @test a^2 === 4
     @test (a<2) === false
@@ -42,6 +43,8 @@ end
 
     # Indexing
     @hasnames x  A[:,1]
+    @test A[:,1,:] == A.data[:,1,:]
+    @hasnames x _  A[:,1,:]
 
     v = @view A[:,1]
     @hasnames x  1 .+ v
@@ -49,16 +52,19 @@ end
     @hasnames x  v .+ (1,2,3)
 
     @hasnames x y @view A[:,2:end] # keeps y
-    @test_skip @hasnames x y @view A[:,1:2] # forgets y
+    @test_skip @hasnames x y @view A[:,1:2] # forgets y -- maybe to_index can catch this?
     @hasnames x _  A[:,1,:]
 
     # Reductions
     @hasnames x y  sum(A, dims=1)
     @hasnames x dropdims(sum(A, dims=2), dims=2)
+    @hasnames y dropdims(sum(A, dims=1), dims=1)
 
     # Functions which just work
     @hasnames x y  hcat(A,A)
-    @hasnames x y _  cat(A,A; dims=(1,2,3)) 
+    @hasnames x y _  cat(A,A; dims=(1,2,3))
+    @hasnames x sort(v)
+    @hasnames x y sortslices(A; dims=1)
     @hasnames y x permutedims(A)
     @test_skip @hasnames _ x permutedims(v) # to_shape stackoverflow
     @test_throws Any vcat(A, A')
@@ -72,12 +78,13 @@ end
     # Generators
     @hasnames x y  [x^2 for x in A]
     @hasnames x  [i^2 for i in 1:size(A,1)]
+    @hasnames x y x  [x^2+y for x in A, y in v]
 
     # Permutations
     P = PermutedDimsArray(A, (2,1))
     @hasnames y x  1 .+ P
     @hasnames x y  1 .+ P'
-    @hasnames y x  sum(P, dims=2)
+    @test_skip @hasnames y x  sum(P, dims=2) # has y _
     @hasnames x dropdims(sum(P', dims=2), dims=2)
     @test_skip P != A                   # throws, but shouldn't!
 end
@@ -97,18 +104,9 @@ end
     # @test prod(A', dims=:x) == prod(A', dims=1)
     P = PermutedDimsArray(A, (2,1))
     # sum(P, dims=:y) == sum(P, dims=2)
+
+    # @hasnames x y sortslices(A; dims=:y)
 end
-
-#=
-
-
-A[:,1,:] # StackOverflowError
-
-dropdims(sum(A, dims=1), dims=1)
-
-qr(M)
-
-=#
 
 using LinearAlgebra, Statistics
 
@@ -118,13 +116,25 @@ using LinearAlgebra, Statistics
     M = named(rand(3,3), :x, :y)
     @hasnames x  M * y
     @hasnames x x M * M'
-    @hasnames y  x' * M
+    @hasnames _ y  x' * M
 
     @test det(M) isa Number
 
+    adj = named(rand(3)', :x)
+    @hasnames _ x  adj
+    @test adj * x isa Number
+
     D = named(Diagonal(rand(3)), :x)
+    @hasnames x x  D
     @hasnames x y  D * M
     @hasnames x  D * x
+
+    @test D[x=1] == D[1,1]
+    @test D .* 100 isa Diagonal{Float64, <:StridedArray}
+
+    U, S, Vt = svd(M)
+    @hasnames x x  U
+    @test U * Diagonal(S) * Vt' ≈ M
 
     @test_throws Any x + y
     @test_throws Any x' * y
@@ -134,8 +144,7 @@ end
 
 @testset "Statistics" begin
     A = named(Int.(rand(Int8,3,3)), :x, :y)
-    mean(A, dims=:x)
+    @hasnames x y  mean(A, dims=:x)
     mean(A', dims=:x)
-    # std(A, dims=:x)
-
+    std(A, dims=:x)
 end
