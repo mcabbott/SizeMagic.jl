@@ -16,10 +16,10 @@ julia> using SizeMagic
 julia> A = named(rand(Int8,3,3), :x, :y) .+ 0;
 
 julia> A'
-3×3 adjoint(named(::Matrix{Int64}, :x, :y)) with eltype Int64:
- -26  117  -38
-  69   71   87
-  92  126   -6
+(y⩽3)×(x⩽3) adjoint(named(::Matrix{Int64}, :x, :y)) with eltype Int64:
+  71  -65  -10
+  60   54  -84
+ -90  -33  -81
 
 julia> axes(A')
 (Base.OneTo(NamedInt(3, :y)), Base.OneTo(NamedInt(3, :x)))
@@ -28,12 +28,24 @@ julia> A isa StridedMatrix
 true
 
 julia> A' * A
-3×3 named(::Matrix{Int64}, :y, :y):
- 15809   3207  12578
-  3207  17371  14772
- 12578  14772  24376
+(y⩽3)×(y⩽3) named(::Matrix{Int64}, :y, :y):
+  9366   1590  -3435
+  1590  13572   -378
+ -3435   -378  15750
 
-julia> sum(A, dims=:x)
-1×3 named(::Matrix{Int64}, :x, :y):
- 53  227  212
+julia> sum(cbrt, A, dims=:x)
+(x⩽1)×(y⩽3) named(::Matrix{Float64}, :x, :y):
+ -2.03434  3.31511  -12.0157
+
+julia> hcat(A, A)
+(x⩽3)×(y⩽6) named(::Matrix{Int64}, :x, :y):
+  71   60  -90   71   60  -90
+ -65   54  -33  -65   54  -33
+ -10  -84  -81  -10  -84  -81
+
+julia> hcat(A, A')
+ERROR: ArgumentError: number of rows of each array must match (got (NamedInt(3, :x), NamedInt(3, :y)))
+Stacktrace:
+ [1] _typed_hcat(#unused#::Type{Int64}, A::Tuple{SizeMagic.NamedDense{Int64, 2, Matrix{Int64}}, Adjoint{Int64, SizeMagic.NamedDense{Int64, 2, Matrix{Int64}}}})
+   @ Base ./abstractarray.jl:1573
 ```
